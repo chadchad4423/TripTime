@@ -42,7 +42,7 @@ import com.mudita.mmd.components.top_app_bar.TopAppBarMMD
  * "v1" to have signalled a change to yet. The app version beside it comes from `BuildConfig`,
  * so that half can never drift out of date on its own.
  */
-private const val NOTICE_VERSION = "v1"
+private const val NOTICE_VERSION = "v2"
 
 private sealed interface Block {
     @JvmInline value class Heading(val text: String) : Block
@@ -79,6 +79,13 @@ private val PRIVACY_BLOCKS: List<Block> = listOf(
     Block.Paragraph(
         "That is everything. No name, no phone number, no device identifier, and no record of " +
             "trips you looked up previously is ever transmitted."
+    ),
+    Block.Paragraph(
+        "One thing the list above cannot cover: because your phone contacts OpenRouteService " +
+            "directly, their servers can see your device's IP address, the same way any " +
+            "website you visit can. TripTime does not send it, read it, or store it — it " +
+            "is a property of the connection itself, not something the app chooses to " +
+            "include."
     ),
     Block.Heading("No location access"),
     Block.Paragraph(
