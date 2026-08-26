@@ -247,8 +247,7 @@ if __name__ == "__main__":
 # Put the key in a file only you can read, rather than in the crontab, so it does not appear in
 # `ps` output or in a backup of your crontab:
 #
-#   printf "export ORS_API_KEY='%s'
-" 'your-key-here' > ~/.config/triptime/env
+#   echo "export ORS_API_KEY='your-key-here'" > ~/.config/triptime/env
 #   chmod 600 ~/.config/triptime/env
 #
 # The `export` is not optional. Sourcing a bare `FOO=bar` creates a *shell* variable, and child
@@ -281,8 +280,7 @@ if __name__ == "__main__":
 #      and an unquoted & in a sourced file is a shell background operator, not a character --
 #      the line silently splits into background jobs and the variable ends up truncated:
 #
-#        printf "export KUMA_PUSH_URL='%s'
-" 'https://kuma.example.com/api/push/YOURTOKEN' >> ~/.config/triptime/env
+#        echo "export KUMA_PUSH_URL='https://kuma.example.com/api/push/YOURTOKEN'" >> ~/.config/triptime/env
 #
 #      Leaving Kuma's example parameters on is harmless -- this script strips status, msg and
 #      ping before adding its own, so a stale status=up cannot pin the monitor to healthy.
