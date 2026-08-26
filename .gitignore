@@ -24,6 +24,7 @@ local.properties
 # Local quota measurements from tools/poll-quota.py. Machine-specific and ever-growing;
 # useful to Chad, meaningless to anyone else.
 tools/quota-log.csv
+tools/quota-dashboard.html
 
 # macOS
 .DS_Store
