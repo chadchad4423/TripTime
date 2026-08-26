@@ -24,6 +24,17 @@ val localProperties = Properties().apply {
     }
 }
 val orsApiKey: String = localProperties.getProperty("ORS_API_KEY", "")
+
+// Remote config (DECISIONS.md D-020). A small JSON file, fetched at launch, that can redirect the
+// app to a different API host or endpoint path, hand it a replacement key, and show a message —
+// all without a new release. CONFIG_DECRYPT_KEY unwraps the key field when one is present; it is
+// compiled in, so it is exactly as secret as the APK, which is the same posture ORS_API_KEY has
+// always had. A build without it simply never uses a remote key.
+val configUrl: String = localProperties.getProperty(
+    "CONFIG_URL",
+    "https://raw.githubusercontent.com/chadchad4423/TripTime/main/docs/config.json",
+)
+val configDecryptKey: String = localProperties.getProperty("CONFIG_DECRYPT_KEY", "")
 if (orsApiKey.isBlank()) {
     logger.warn(
         "TripTime: no ORS_API_KEY in local.properties — this build cannot reach " +
@@ -63,12 +74,14 @@ android {
         applicationId = "com.chad.triptime"
         minSdk = 31
         targetSdk = 37
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "ORS_API_KEY", "\"$orsApiKey\"")
+        buildConfigField("String", "CONFIG_URL", "\"$configUrl\"")
+        buildConfigField("String", "CONFIG_DECRYPT_KEY", "\"$configDecryptKey\"")
     }
 
     signingConfigs {

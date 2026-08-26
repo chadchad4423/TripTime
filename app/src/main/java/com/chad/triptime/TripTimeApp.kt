@@ -29,7 +29,14 @@ fun TripTimeApp(container: AppContainer) {
             Screen.TRIP -> {
                 val viewModel: TripViewModel = viewModel(
                     factory = viewModelFactory {
-                        initializer { TripViewModel(container.tripRepository, container.preferencesStore) }
+                        initializer {
+                            TripViewModel(
+                                repository = container.tripRepository,
+                                preferencesStore = container.preferencesStore,
+                                configStore = container.remoteConfigStore,
+                                configFetcher = container.remoteConfigFetcher,
+                            )
+                        }
                     }
                 )
                 TripScreen(

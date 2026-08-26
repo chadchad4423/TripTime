@@ -2,6 +2,8 @@ package com.chad.triptime
 
 import android.content.Context
 import com.chad.triptime.data.OrsClient
+import com.chad.triptime.data.RemoteConfigFetcher
+import com.chad.triptime.data.RemoteConfigStore
 import com.chad.triptime.data.PreferencesStore
 import com.chad.triptime.data.TripRepository
 
@@ -15,6 +17,14 @@ import com.chad.triptime.data.TripRepository
 class AppContainer(context: Context) {
     val preferencesStore = PreferencesStore(context.applicationContext)
 
-    private val orsClient = OrsClient(apiKey = BuildConfig.ORS_API_KEY)
+    /**
+     * Where requests go, and anything the app needs to tell the user. Starts at the compiled-in
+     * defaults and is replaced only if a fetch succeeds — see DECISIONS.md D-020. Held here rather
+     * than inside the client so the ViewModel can read the message and version fields too.
+     */
+    val remoteConfigStore = RemoteConfigStore()
+    val remoteConfigFetcher = RemoteConfigFetcher()
+
+    private val orsClient = OrsClient(remoteConfigStore)
     val tripRepository = TripRepository(orsClient)
 }

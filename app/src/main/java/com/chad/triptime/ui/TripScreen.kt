@@ -214,6 +214,18 @@ fun TripScreen(viewModel: TripViewModel, onOpenPrivacy: () -> Unit) {
                             unit = state.unit,
                             sillyUnit = state.sillyUnit,
                         )
+
+                    // Last in the order deliberately: a message from remote config (D-020) is the
+                    // least urgent thing this area can hold, so an error or an actual answer
+                    // always wins. It lives here rather than in a bar of its own because this
+                    // region is already dynamic — nothing in the static layout moves to make room
+                    // for it, which is what D-007 requires.
+                    state.notice != null -> TextMMD(
+                        text = state.notice!!,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                    )
                 }
             }
 

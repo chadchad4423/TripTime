@@ -63,7 +63,7 @@ import kotlin.math.roundToInt
  * "v1" to have signalled a change to yet. The app version beside it comes from `BuildConfig`,
  * so that half can never drift out of date on its own.
  */
-private const val NOTICE_VERSION = "v2"
+private const val NOTICE_VERSION = "v3"
 
 private sealed interface Block {
     @JvmInline value class Heading(val text: String) : Block
@@ -107,6 +107,21 @@ private val PRIVACY_BLOCKS: List<Block> = listOf(
             "website you visit can. TripTime does not send it, read it, or store it — it " +
             "is a property of the connection itself, not something the app chooses to " +
             "include."
+    ),
+    Block.Heading("One more request, to GitHub"),
+    Block.Paragraph(
+        "When TripTime starts, it also fetches a small settings file from GitHub, where the app's "
+            + "source code lives. The file tells the app where to send its map requests, and can "
+            + "carry a short message — for example, that a newer version has been released. "
+            + "This exists so that if the map service ever moves or changes, already-installed "
+            + "copies keep working instead of quietly failing."
+    ),
+    Block.Paragraph(
+        "That request sends nothing about you. It asks for a fixed file at a fixed address and "
+            + "carries no address you typed, no identifier, and no information about your phone "
+            + "beyond what any request unavoidably reveals. GitHub can see that some device asked "
+            + "for the file, as they can for anything hosted there. If the fetch fails for any "
+            + "reason, TripTime carries on with the settings built into it, and nothing is stored."
     ),
     Block.Heading("No location access"),
     Block.Paragraph(

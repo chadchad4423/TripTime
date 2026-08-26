@@ -1,0 +1,9 @@
+{
+  "_comment": "TripTime remote config. See DECISIONS.md D-020. Every field is optional: anything absent or unreadable falls back to the values compiled into the app, so a broken file here can never be worse than no file at all. apiBase and the three paths are held in reserve by the app and only used after a request has already failed, so a wrong value cannot break a working install.",
+  "apiBase": "https://api.heigit.org",
+  "autocompletePath": "/pelias/v1/autocomplete",
+  "searchPath": "/pelias/v1/search",
+  "directionsPath": "/openrouteservice/v2/directions/driving-car",
+  "latestVersion": "1.3",
+  "message": ""
+}

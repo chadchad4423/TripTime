@@ -1,5 +1,6 @@
 package com.chad.triptime.data
 
+import android.util.Log
 import com.chad.triptime.model.Place
 import com.chad.triptime.model.TripResult
 import kotlinx.coroutines.Dispatchers
@@ -11,28 +12,28 @@ import okhttp3.Request
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-/** Thrown for any OpenRouteService call that TripTime cannot recover from on its own. */
-class OrsException(message: String) : Exception(message)
+private const val TAG = "OrsClient"
+
+/**
+ * Thrown for any OpenRouteService call that TripTime cannot recover from on its own.
+ *
+ * [retryable] marks the failures that might be cured by switching to the reserve endpoint or key
+ * from remote config (D-020) — a dead host, a rejected key, a path that no longer exists. It is
+ * deliberately false for answers the service gave on purpose: "no route between these points" is
+ * a real answer, and retrying it against a different host would waste quota and change nothing.
+ */
+class OrsException(message: String, val retryable: Boolean = false) : Exception(message)
 
 /** ORS's own error code for a requested route longer than its 6,000 km server limit. Arrives
  * with HTTP 400, so the status alone isn't enough to recognise it. */
 private const val ORS_DISTANCE_LIMIT_EXCEEDED = 2004
 
 /**
- * HeiGIT's unified API host. The host this app originally called was deprecated on 2026-04-28
- * and shut down on 2026-08-24 (DECISIONS.md D-018). Everything now lives under
- * `api.heigit.org/<service>/<version>/`, and it is **not** a plain host swap: routing moved to
- * `openrouteservice/v2/...`, but geocoding moved to `pelias/v1/...`, dropping the old `geocode/`
- * prefix entirely and naming the underlying engine instead. The same API key works unchanged,
- * and the response shapes are identical — the old geocoder was always Pelias.
+ * Where requests go is no longer fixed at build time: [AppConfig] supplies the host and the three
+ * endpoint paths, defaulting to the compiled-in HeiGIT values and overridable at runtime by the
+ * remote config (DECISIONS.md D-020). D-018 is why — the previous host was retired with paths
+ * changing too, and every installed copy had to be replaced by hand to follow it.
  */
-private const val API_HOST = "https://api.heigit.org"
-
-/** Routing, under HeiGIT's per-service prefix. */
-private const val ROUTING_BASE = "$API_HOST/openrouteservice/v2"
-
-/** Geocoding, addressed as Pelias rather than through the retired `geocode/` alias. */
-private const val GEOCODE_BASE = "$API_HOST/pelias/v1"
 
 /**
  * Talks to OpenRouteService, now hosted on HeiGIT's unified API (api.heigit.org), over
@@ -47,7 +48,10 @@ private const val GEOCODE_BASE = "$API_HOST/pelias/v1"
  * `withContext(Dispatchers.IO)` — TripTime does not need OkHttp's own async callback API for
  * a handful of simple, one-shot requests.
  */
-class OrsClient(private val apiKey: String) {
+class OrsClient(private val configStore: RemoteConfigStore) {
+
+    /** Read per request, so a config that arrives mid-session takes effect immediately. */
+    private val config: AppConfig get() = configStore.current
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -63,77 +67,103 @@ class OrsClient(private val apiKey: String) {
      * globally prominent match.
      */
     suspend fun autocomplete(query: String, focus: Place?): List<Place> =
-        geocode(endpoint = "autocomplete", query = query, focus = focus, size = 5)
+        geocode(path = { it.autocompletePath }, query = query, focus = focus, size = 5)
 
     /** A single best-match lookup, used when the user types an address without picking one
      * of the autocomplete suggestions and then presses Calculate. */
     suspend fun search(query: String, focus: Place?): List<Place> =
-        geocode(endpoint = "search", query = query, focus = focus, size = 1)
+        geocode(path = { it.searchPath }, query = query, focus = focus, size = 1)
 
+    /**
+     * Autocomplete and search differ only in which path they use and how many results they want.
+     * The path arrives as a lambda over [AppConfig], not as a string, so that a retry after
+     * [withEndpointFailover] promotes the reserve config re-reads *both* the host and the path.
+     * D-018 moved both at once, so capturing either one early would half-fix the next migration.
+     */
     private suspend fun geocode(
-        endpoint: String,
+        path: (AppConfig) -> String,
         query: String,
         focus: Place?,
         size: Int,
     ): List<Place> = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext emptyList()
 
-        val urlBuilder = "$GEOCODE_BASE/$endpoint".toHttpUrl().newBuilder()
-            .addQueryParameter("api_key", requireApiKey())
-            .addQueryParameter("text", query)
-            .addQueryParameter("size", size.toString())
-        if (focus != null) {
-            urlBuilder
-                .addQueryParameter("focus.point.lon", focus.longitude.toString())
-                .addQueryParameter("focus.point.lat", focus.latitude.toString())
-        }
+        withEndpointFailover {
+            val urlBuilder = (config.apiBase + path(config)).toHttpUrl().newBuilder()
+                .addQueryParameter("api_key", requireApiKey())
+                .addQueryParameter("text", query)
+                .addQueryParameter("size", size.toString())
+            if (focus != null) {
+                urlBuilder
+                    .addQueryParameter("focus.point.lon", focus.longitude.toString())
+                    .addQueryParameter("focus.point.lat", focus.latitude.toString())
+            }
 
-        val request = Request.Builder().url(urlBuilder.build()).get().build()
-        val body = execute(request)
-        val parsed = json.decodeFromString(GeocodeResponse.serializer(), body)
-        parsed.features.mapNotNull { feature ->
-            val coordinates = feature.geometry.coordinates
-            if (coordinates.size < 2) return@mapNotNull null
-            Place(
-                label = feature.properties.label,
-                longitude = coordinates[0],
-                latitude = coordinates[1],
-            )
+            val request = Request.Builder().url(urlBuilder.build()).get().build()
+            val body = execute(request)
+            val parsed = json.decodeFromString(GeocodeResponse.serializer(), body)
+            parsed.features.mapNotNull { feature ->
+                val coordinates = feature.geometry.coordinates
+                if (coordinates.size < 2) return@mapNotNull null
+                Place(
+                    label = feature.properties.label,
+                    longitude = coordinates[0],
+                    latitude = coordinates[1],
+                )
+            }
         }
     }
 
     /** Driving distance and duration between two already-resolved points. */
     suspend fun drivingDirections(origin: Place, destination: Place): TripResult =
         withContext(Dispatchers.IO) {
-            val url = "$ROUTING_BASE/directions/driving-car".toHttpUrl()
-                .newBuilder()
-                .addQueryParameter("api_key", requireApiKey())
-                .addQueryParameter("start", "${origin.longitude},${origin.latitude}")
-                .addQueryParameter("end", "${destination.longitude},${destination.latitude}")
-                .build()
+            withEndpointFailover {
+                val url = (config.apiBase + config.directionsPath).toHttpUrl()
+                    .newBuilder()
+                    .addQueryParameter("api_key", requireApiKey())
+                    .addQueryParameter("start", "${origin.longitude},${origin.latitude}")
+                    .addQueryParameter("end", "${destination.longitude},${destination.latitude}")
+                    .build()
 
-            val request = Request.Builder().url(url).get().build()
-            val body = execute(request)
-            val parsed = json.decodeFromString(DirectionsResponse.serializer(), body)
-            val summary = parsed.features.firstOrNull()?.properties?.summary
-                ?: throw OrsException("No driving route found between these locations.")
-            TripResult(distanceMeters = summary.distance, durationSeconds = summary.duration)
+                val request = Request.Builder().url(url).get().build()
+                val body = execute(request)
+                val parsed = json.decodeFromString(DirectionsResponse.serializer(), body)
+                val summary = parsed.features.firstOrNull()?.properties?.summary
+                    ?: throw OrsException("No driving route found between these locations.")
+                TripResult(distanceMeters = summary.distance, durationSeconds = summary.duration)
+            }
         }
 
     /** Only reachable in a build made without `ORS_API_KEY` in local.properties — a mistake by
      * whoever built the app, not something the person holding the phone can fix. */
     private fun requireApiKey(): String {
+        val apiKey = config.apiKey
         if (apiKey.isBlank()) {
             throw OrsException("This build of TripTime has no OpenRouteService key.")
         }
         return apiKey
     }
 
+    /**
+     * Runs [block], and if it fails in a way a different endpoint or key might fix, promotes the
+     * reserve config and runs it exactly once more. The retry is transparent: the user sees a
+     * slightly slower answer rather than an error, which is the point of holding the override back
+     * until it is needed (D-020).
+     */
+    private fun <T> withEndpointFailover(block: () -> T): T = try {
+        block()
+    } catch (first: OrsException) {
+        if (!first.retryable || !configStore.activateReserve()) throw first
+        Log.w(TAG, "Request failed; retrying once on the reserve endpoint", first)
+        block()
+    }
+
     private fun execute(request: Request): String {
         val response = try {
             httpClient.newCall(request).execute()
         } catch (io: IOException) {
-            throw OrsException("No connection. Check the Kompakt's Wi-Fi or cellular data.")
+            // Could be the user's signal, could be a host that no longer exists. Worth one retry.
+            throw OrsException("No connection. Check the Kompakt's Wi-Fi or cellular data.", retryable = true)
         }
         response.use {
             val bodyString = it.body?.string().orEmpty()
@@ -142,38 +172,39 @@ class OrsClient(private val apiKey: String) {
             // ORS uses two different shapes for `error`: an object for routing failures
             // ({"error":{"code":2010,"message":"…"}}) but a bare string for auth failures
             // ({"error":"Access to this API has been disallowed"}). Only the object form is
-            // modelled; the string form fails to decode and falls back to the messages below,
-            // which is fine because every status that produces it is handled explicitly.
+            // modelled; the string form fails to decode and falls back to the messages below.
             val error = runCatching {
                 json.decodeFromString(OrsErrorResponse.serializer(), bodyString).error
             }.getOrNull()
 
-            throw OrsException(
-                when {
-                    // The key is the app's, not the user's, so there is nothing they can do
-                    // about this — say so plainly instead of pointing at a settings screen
-                    // that no longer exists.
-                    it.code == 401 || it.code == 403 ->
-                        "TripTime's map service key was rejected. Try again later."
+            throw when {
+                // The key is the app's, not the user's. A reserve config may carry a working one.
+                it.code == 401 || it.code == 403 ->
+                    OrsException("TripTime's map service key was rejected. Try again later.", retryable = true)
 
-                    // Covers both "no road connects these" (ORS code 2009, e.g. San Diego to
-                    // Maui) and "no road near this point" (2010). ORS's own wording for the
-                    // latter is a two-line paragraph about a 350 metre radius — far too much
-                    // text for the Kompakt's screen, and nothing the user can act on.
-                    it.code == 404 -> "No driving route found between these locations."
+                // A 404 is ambiguous here and the distinction matters: ORS answers "no road
+                // connects these" (codes 2009/2010) with 404, and so does a server being asked for
+                // a path that no longer exists. The presence of an ORS error body separates them —
+                // with one it is a real answer, without one the endpoint itself is suspect.
+                it.code == 404 && error?.code != null ->
+                    OrsException("No driving route found between these locations.")
 
-                    // ORS refuses to route anything over 6,000 km and says so as "Request
-                    // parameters exceed the server configuration limits. The approximated route
-                    // distance must not be greater than 6000000.0 meters." Say it in plain words.
-                    error?.code == ORS_DISTANCE_LIMIT_EXCEEDED ->
-                        "That's too far to drive. Routes are limited to about 6,000 km (3,700 mi)."
+                it.code == 404 ->
+                    OrsException("No driving route found between these locations.", retryable = true)
 
-                    it.code == 429 ->
-                        "Too many requests to OpenRouteService — wait a moment and try again."
+                // ORS refuses anything over 6,000 km. A deliberate answer, not a fault.
+                error?.code == ORS_DISTANCE_LIMIT_EXCEEDED ->
+                    OrsException("That's too far to drive. Routes are limited to about 6,000 km (3,700 mi).")
 
-                    else -> error?.message ?: "OpenRouteService request failed (HTTP ${it.code})."
-                }
-            )
+                // Rate limiting is about volume, not about where the request went.
+                it.code == 429 ->
+                    OrsException("Too many requests to OpenRouteService — wait a moment and try again.")
+
+                else -> OrsException(
+                    error?.message ?: "OpenRouteService request failed (HTTP ${it.code}).",
+                    retryable = true,
+                )
+            }
         }
     }
 }
