@@ -185,6 +185,41 @@ def main():
     for row in rows:
         print(f"{row['sampled_at']}  {row['endpoint']:<11} status={row['http_status']:<6}"
               f" used={row['used'] or '?'}  remaining={row['remaining'] or '?'}")
+    notify_kuma(rows)
+
+
+def notify_kuma(rows):
+    """Report this sample to an Uptime Kuma push monitor, if KUMA_PUSH_URL is set.
+
+    Push rather than a Kuma HTTP monitor on the API itself, for one reason: Kuma's default check
+    interval is 60 seconds, which against these quotas would be 1440 requests a day -- roughly half
+    the geocoding budget and most of the directions budget, spent entirely on watching. This run is
+    already making exactly the requests a monitor would make, so reporting its result costs nothing
+    extra and carries the remaining quota along with it.
+
+    Failing to reach Kuma is never allowed to affect the sample that was already recorded -- the
+    measurement is the job here, and the notification is a courtesy.
+    """
+    push_url = os.environ.get("KUMA_PUSH_URL", "").strip()
+    if not push_url:
+        return
+
+    healthy = all(r["http_status"] == "200" for r in rows)
+    detail = ", ".join(
+        f"{r['endpoint']} {r['http_status']}"
+        + (f" ({r['remaining']} left)" if r["remaining"] else "")
+        for r in rows
+    )
+    query = urllib.parse.urlencode({
+        "status": "up" if healthy else "down",
+        "msg": detail or "no probes ran",
+    })
+    separator = "&" if "?" in push_url else "?"
+    try:
+        with urllib.request.urlopen(f"{push_url}{separator}{query}", timeout=10) as response:
+            print(f"  kuma: pushed {'up' if healthy else 'down'} (HTTP {response.status})")
+    except Exception as err:
+        print(f"  kuma: push failed ({err}) -- the sample above is still recorded")
 
 
 if __name__ == "__main__":
@@ -213,6 +248,44 @@ if __name__ == "__main__":
 # Hourly is the sensible ceiling. Each run spends one geocoding and one directions unit, so 24 of
 # each per day against budgets of 3000 and 2000 -- about 1%. Poll every minute and you would be
 # measuring yourself rather than your users, and `--summary` would say so.
+#
+# Uptime Kuma
+#
+# Use a PUSH monitor, not an HTTP monitor pointed at the API. Kuma's default interval is 60
+# seconds, which against these quotas is 1440 requests a day -- about half the geocoding budget
+# and most of the directions budget, spent entirely on watching. This script already makes exactly
+# the requests such a monitor would, so having it report costs nothing extra and the heartbeat
+# carries the remaining quota with it, which an HTTP monitor could not tell you.
+#
+#   1. In Kuma: New Monitor -> Monitor Type "Push".
+#   2. Set Heartbeat Interval to 4200 seconds (70 minutes). It must comfortably exceed the cron
+#      interval, or a run that starts a minute late will look like an outage.
+#   3. Copy the push URL Kuma shows, then add it to the same env file as the key:
+#
+#        printf 'KUMA_PUSH_URL=https://kuma.example.com/api/push/YOURTOKEN
+' >> ~/.config/triptime/env
+#
+# Kuma then shows "up" with a message like
+#   geocoding 200 (2988 left), directions 200 (1988 left)
+# and goes "down" if either endpoint stops answering, or if the cron run itself stops happening --
+# which is worth having, since a server that quietly stopped polling would otherwise look
+# identical to an API that is perfectly healthy.
+#
+# Also worth monitoring, and these cost no quota at all because they are static files:
+#
+#   HTTP(s) - Keyword, keyword "apiBase", any interval:
+#     https://raw.githubusercontent.com/chadchad4423/TripTime/main/docs/config.json
+#     https://chadchad4423.github.io/TripTime/config.json
+#
+# Those two are the app's safety net (DECISIONS.md D-020). A safety net that breaks quietly is
+# worse than none, because nobody looks at it until the day they need it -- which is exactly how
+# D-018 went. Monitoring both means a URL structure change gets noticed the day it happens.
+#
+# If you want an API check independent of this script, use HTTP(s) - Keyword with keyword
+# "summary" against the directions endpoint, put the key in a header rather than the URL so it
+# stays out of Kuma's monitor list (Authorization works on both endpoints -- verified), and set
+# the interval to 1800 seconds or longer. Note that this spends quota that the push monitor does
+# not, so it is a deliberate trade rather than a free addition.
 #
 # Reading it back, on the server or after copying the CSV anywhere:
 #
