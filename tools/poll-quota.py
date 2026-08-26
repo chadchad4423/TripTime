@@ -210,13 +210,23 @@ def notify_kuma(rows):
         + (f" ({r['remaining']} left)" if r["remaining"] else "")
         for r in rows
     )
-    query = urllib.parse.urlencode({
-        "status": "up" if healthy else "down",
-        "msg": detail or "no probes ran",
-    })
-    separator = "&" if "?" in push_url else "?"
+    # Kuma's UI shows the push URL with example parameters already on it
+    # (?status=up&msg=OK&ping=), and copying it verbatim is the obvious thing to do. If those were
+    # left in place, "status=up" would sit ahead of ours in the query string and Kuma would read
+    # the first one -- reporting healthy forever, including while the API was down. Strip anything
+    # we are about to set rather than trusting the URL to be bare.
+    parsed = urllib.parse.urlsplit(push_url)
+    keep = [(k, v) for k, v in urllib.parse.parse_qsl(parsed.query)
+            if k not in ("status", "msg", "ping")]
+    keep += [
+        ("status", "up" if healthy else "down"),
+        ("msg", detail or "no probes ran"),
+    ]
+    target = urllib.parse.urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, urllib.parse.urlencode(keep), "")
+    )
     try:
-        with urllib.request.urlopen(f"{push_url}{separator}{query}", timeout=10) as response:
+        with urllib.request.urlopen(target, timeout=10) as response:
             print(f"  kuma: pushed {'up' if healthy else 'down'} (HTTP {response.status})")
     except Exception as err:
         print(f"  kuma: push failed ({err}) -- the sample above is still recorded")
@@ -260,9 +270,15 @@ if __name__ == "__main__":
 #   1. In Kuma: New Monitor -> Monitor Type "Push".
 #   2. Set Heartbeat Interval to 4200 seconds (70 minutes). It must comfortably exceed the cron
 #      interval, or a run that starts a minute late will look like an outage.
-#   3. Copy the push URL Kuma shows, then add it to the same env file as the key:
+#   3. Copy the push URL Kuma shows, then add it to the same env file as the key. **Quote the
+#      value.** Kuma shows the URL with example parameters on it (?status=up&msg=OK&ping=),
+#      and an unquoted & in a sourced file is a shell background operator, not a character --
+#      the line silently splits into background jobs and the variable ends up truncated:
 #
-#        echo 'KUMA_PUSH_URL=https://kuma.example.com/api/push/YOURTOKEN' >> ~/.config/triptime/env
+#        echo "KUMA_PUSH_URL='https://kuma.example.com/api/push/YOURTOKEN'" >> ~/.config/triptime/env
+#
+#      Leaving Kuma's example parameters on is harmless -- this script strips status, msg and
+#      ping before adding its own, so a stale status=up cannot pin the monitor to healthy.
 #
 # Kuma then shows "up" with a message like
 #   geocoding 200 (2988 left), directions 200 (1988 left)
