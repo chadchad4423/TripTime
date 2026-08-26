@@ -262,8 +262,7 @@ if __name__ == "__main__":
 #      interval, or a run that starts a minute late will look like an outage.
 #   3. Copy the push URL Kuma shows, then add it to the same env file as the key:
 #
-#        printf 'KUMA_PUSH_URL=https://kuma.example.com/api/push/YOURTOKEN
-' >> ~/.config/triptime/env
+#        echo 'KUMA_PUSH_URL=https://kuma.example.com/api/push/YOURTOKEN' >> ~/.config/triptime/env
 #
 # Kuma then shows "up" with a message like
 #   geocoding 200 (2988 left), directions 200 (1988 left)
