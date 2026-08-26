@@ -9,6 +9,21 @@ TripTime deliberately does **not** show a map, a route line, or turn-by-turn dir
 need those, this isn't the app — it's built around the Kompakt's E Ink screen and the idea that
 a quick trip estimate shouldn't need a full navigation app.
 
+## Screenshots
+
+Taken on a real Mudita Kompakt running MuditaOS K 1.5.0 — actual 480 x 800 panel output, not
+renders or emulator captures.
+
+| Start | Address autocomplete | The answer |
+|:---:|:---:|:---:|
+| <img src="docs/screenshots/start.png" width="230" alt="TripTime's start screen: a From field, a To field, a full-width Calculate button, and a Privacy link at the bottom."> | <img src="docs/screenshots/autocomplete.png" width="230" alt="Typing 'Denver CO' into the From field, with five suggested addresses listed below it."> | <img src="docs/screenshots/result.png" width="230" alt="A calculated trip from Denver, CO to Boulder, CO, showing 41 min in large type with 28.2 mi beneath it."> |
+| Two fields and one button. Nothing moves when the keyboard opens. | Suggestions for the destination rank near the starting point you already chose — no GPS involved. | Driving time is the headline; distance is the supporting fact. |
+
+| Novelty units | Privacy |
+|:---:|:---:|
+| <img src="docs/screenshots/novelty-units.png" width="230" alt="The same Denver to Boulder trip with the 'us' unit selected, showing the distance as 496 football fields."> | <img src="docs/screenshots/privacy.png" width="230" alt="TripTime's in-app Privacy page, explaining that the app collects nothing and describing exactly which requests leave the phone."> |
+| The `us` unit renders the distance in one of 30 objects of known length, picked at random per trip. | The Privacy page spells out exactly what does and doesn't leave your phone. |
+
 ## Why no Google APIs?
 
 The Kompakt runs MuditaOS K, a de-Googled build of AOSP with no Google Play Services. TripTime
