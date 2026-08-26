@@ -19,7 +19,24 @@ class OrsException(message: String) : Exception(message)
 private const val ORS_DISTANCE_LIMIT_EXCEEDED = 2004
 
 /**
- * Talks to OpenRouteService (openrouteservice.org) over plain HTTPS. Nothing here depends on
+ * HeiGIT's unified API host. The host this app originally called was deprecated on 2026-04-28
+ * and shut down on 2026-08-24 (DECISIONS.md D-018). Everything now lives under
+ * `api.heigit.org/<service>/<version>/`, and it is **not** a plain host swap: routing moved to
+ * `openrouteservice/v2/...`, but geocoding moved to `pelias/v1/...`, dropping the old `geocode/`
+ * prefix entirely and naming the underlying engine instead. The same API key works unchanged,
+ * and the response shapes are identical — the old geocoder was always Pelias.
+ */
+private const val API_HOST = "https://api.heigit.org"
+
+/** Routing, under HeiGIT's per-service prefix. */
+private const val ROUTING_BASE = "$API_HOST/openrouteservice/v2"
+
+/** Geocoding, addressed as Pelias rather than through the retired `geocode/` alias. */
+private const val GEOCODE_BASE = "$API_HOST/pelias/v1"
+
+/**
+ * Talks to OpenRouteService, now hosted on HeiGIT's unified API (api.heigit.org), over
+ * plain HTTPS. Nothing here depends on
  * Google Play Services, which the Mudita Kompakt's de-Googled AOSP build does not have.
  *
  * The [apiKey] is fixed for the life of the app — it is baked in at build time from
@@ -46,12 +63,12 @@ class OrsClient(private val apiKey: String) {
      * globally prominent match.
      */
     suspend fun autocomplete(query: String, focus: Place?): List<Place> =
-        geocode(endpoint = "geocode/autocomplete", query = query, focus = focus, size = 5)
+        geocode(endpoint = "autocomplete", query = query, focus = focus, size = 5)
 
     /** A single best-match lookup, used when the user types an address without picking one
      * of the autocomplete suggestions and then presses Calculate. */
     suspend fun search(query: String, focus: Place?): List<Place> =
-        geocode(endpoint = "geocode/search", query = query, focus = focus, size = 1)
+        geocode(endpoint = "search", query = query, focus = focus, size = 1)
 
     private suspend fun geocode(
         endpoint: String,
@@ -61,7 +78,7 @@ class OrsClient(private val apiKey: String) {
     ): List<Place> = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext emptyList()
 
-        val urlBuilder = "https://api.openrouteservice.org/$endpoint".toHttpUrl().newBuilder()
+        val urlBuilder = "$GEOCODE_BASE/$endpoint".toHttpUrl().newBuilder()
             .addQueryParameter("api_key", requireApiKey())
             .addQueryParameter("text", query)
             .addQueryParameter("size", size.toString())
@@ -88,7 +105,7 @@ class OrsClient(private val apiKey: String) {
     /** Driving distance and duration between two already-resolved points. */
     suspend fun drivingDirections(origin: Place, destination: Place): TripResult =
         withContext(Dispatchers.IO) {
-            val url = "https://api.openrouteservice.org/v2/directions/driving-car".toHttpUrl()
+            val url = "$ROUTING_BASE/directions/driving-car".toHttpUrl()
                 .newBuilder()
                 .addQueryParameter("api_key", requireApiKey())
                 .addQueryParameter("start", "${origin.longitude},${origin.latitude}")
