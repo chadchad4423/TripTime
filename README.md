@@ -7,7 +7,8 @@ takes, with the distance underneath. That's it. Yes, this app is pretty much an 
 
 TripTime deliberately does **not** show a map, a route line, or turn-by-turn directions. If you
 need those, this isn't the app — it's built around the Kompakt's E Ink screen and the idea that
-a quick trip estimate shouldn't need a full navigation app.
+a quick trip estimate shouldn't need a full navigation app...and that a full navigation app needn't
+have this trip planning capability.
 
 ## Screenshots
 
