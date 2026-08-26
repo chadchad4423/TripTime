@@ -247,8 +247,14 @@ if __name__ == "__main__":
 # Put the key in a file only you can read, rather than in the crontab, so it does not appear in
 # `ps` output or in a backup of your crontab:
 #
-#   printf 'ORS_API_KEY=your-key-here\n' > ~/.config/triptime/env
+#   printf "export ORS_API_KEY='%s'
+" 'your-key-here' > ~/.config/triptime/env
 #   chmod 600 ~/.config/triptime/env
+#
+# The `export` is not optional. Sourcing a bare `FOO=bar` creates a *shell* variable, and child
+# processes do not inherit those -- python3 would see nothing and the script would report no API
+# key while the file plainly contains one. Quote the value too: an unquoted & is a background
+# operator, not a character, and the line would silently split into jobs.
 #
 # Then `crontab -e` and add an hourly sample. Cron runs /bin/sh with almost no environment, which
 # is why the env file is sourced explicitly and python3 is given by full path:
@@ -275,7 +281,8 @@ if __name__ == "__main__":
 #      and an unquoted & in a sourced file is a shell background operator, not a character --
 #      the line silently splits into background jobs and the variable ends up truncated:
 #
-#        echo "KUMA_PUSH_URL='https://kuma.example.com/api/push/YOURTOKEN'" >> ~/.config/triptime/env
+#        printf "export KUMA_PUSH_URL='%s'
+" 'https://kuma.example.com/api/push/YOURTOKEN' >> ~/.config/triptime/env
 #
 #      Leaving Kuma's example parameters on is harmless -- this script strips status, msg and
 #      ping before adding its own, so a stale status=up cannot pin the monitor to healthy.
