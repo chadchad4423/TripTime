@@ -21,6 +21,10 @@ local.properties
 *.keystore
 *.p12
 
+# Local quota measurements from tools/poll-quota.py. Machine-specific and ever-growing;
+# useful to Chad, meaningless to anyone else.
+tools/quota-log.csv
+
 # macOS
 .DS_Store
 
