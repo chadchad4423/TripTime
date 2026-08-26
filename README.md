@@ -22,15 +22,44 @@ Does it seem ridiculous? Well it should, because this app is intended to be tong
 Taken on a real Mudita Kompakt running MuditaOS K 1.5.0 — actual 480 x 800 panel output, not
 renders or emulator captures.
 
-| Start | Address autocomplete | The answer |
-|:---:|:---:|:---:|
-| <img src="docs/screenshots/start.png" width="230" alt="TripTime's start screen: a From field, a To field, a full-width Calculate button, and a Privacy link at the bottom."> | <img src="docs/screenshots/autocomplete.png" width="230" alt="Typing 'Denver CO' into the From field, with five suggested addresses listed below it."> | <img src="docs/screenshots/result.png" width="230" alt="A calculated trip from Denver, CO to Boulder, CO, showing 41 min in large type with 28.2 mi beneath it."> |
-| Two fields and one button. Nothing moves when the keyboard opens. | Suggestions for the destination rank near the starting point you already chose — no GPS involved. | Driving time is the headline; distance is the supporting fact. |
-
-| Novelty units | Privacy |
-|:---:|:---:|
-| <img src="docs/screenshots/novelty-units.png" width="230" alt="The same Denver to Boulder trip with the 'us' unit selected, showing the distance as 496 football fields."> | <img src="docs/screenshots/privacy.png" width="230" alt="TripTime's in-app Privacy page, explaining that the app collects nothing and describing exactly which requests leave the phone."> |
-| The `us` unit renders the distance in one of 30 objects of known length, picked at random per trip. | The Privacy page spells out exactly what does and doesn't leave your phone. |
+<!-- A raw HTML table, not a Markdown one, purely so the columns can be pinned to 33% each.
+     Markdown table columns size to their content, so the caption lengths were driving the
+     column widths, and GitHub's `img { max-width: 100% }` then scaled each screenshot to
+     whatever width its column happened to get — five identical 480x800 files rendering at five
+     different sizes. Fixed widths make them match. The empty third cell in the second row keeps
+     the column grid aligned; without it the two-image row stretches to half-width each. -->
+<table>
+  <tr>
+    <td align="center" width="33%"><b>Start</b></td>
+    <td align="center" width="33%"><b>Address autocomplete</b></td>
+    <td align="center" width="33%"><b>The answer</b></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/start.png" alt="TripTime's start screen: a From field, a To field, a full-width Calculate button, and a Privacy link at the bottom."></td>
+    <td align="center"><img src="docs/screenshots/autocomplete.png" alt="Typing 'Denver CO' into the From field, with five suggested addresses listed below it."></td>
+    <td align="center"><img src="docs/screenshots/result.png" alt="A calculated trip from Denver, CO to Boulder, CO, showing 41 min in large type with 28.2 mi beneath it."></td>
+  </tr>
+  <tr>
+    <td align="center">Two fields and one button. Nothing moves when the keyboard opens.</td>
+    <td align="center">Suggestions for the destination rank near the starting point you already chose — no GPS involved.</td>
+    <td align="center">Driving time is the headline; distance is the supporting fact.</td>
+  </tr>
+  <tr>
+    <td align="center"><b>Novelty units</b></td>
+    <td align="center"><b>Privacy</b></td>
+    <td></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/novelty-units.png" alt="The same Denver to Boulder trip with the 'us' unit selected, showing the distance as 496 football fields."></td>
+    <td align="center"><img src="docs/screenshots/privacy.png" alt="TripTime's in-app Privacy page, explaining that the app collects nothing and describing exactly which requests leave the phone."></td>
+    <td></td>
+  </tr>
+  <tr>
+    <td align="center">The <code>us</code> unit renders the distance in one of 30 objects of known length, picked at random per trip.</td>
+    <td align="center">The Privacy page spells out exactly what does and doesn't leave your phone.</td>
+    <td></td>
+  </tr>
+</table>
 
 ## Why no Google APIs?
 
