@@ -1,21 +1,23 @@
 package com.chad.triptime.ui
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -28,19 +30,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.chad.triptime.BuildConfig
-import com.mudita.mmd.components.buttons.ButtonDefaultsMMD
-import com.mudita.mmd.components.buttons.ButtonMMD
 import com.mudita.mmd.components.divider.HorizontalDividerMMD
 import com.mudita.mmd.components.text.TextMMD
 import com.mudita.mmd.components.top_app_bar.TopAppBarMMD
 import kotlinx.coroutines.launch
-import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 /**
@@ -136,12 +136,9 @@ private val PRIVACY_BLOCKS: List<Block> = listOf(
     ),
 )
 
-/**
- * How much of the outgoing screen stays visible after a page turn. Two lines' worth: enough that
- * the eye lands on something it has already read and can carry the sentence across the break,
- * which is the whole reason a reader tolerates paging at all.
- */
 private val PAGE_OVERLAP = 44.dp
+private val RAIL_WIDTH = 30.dp
+private val RAIL_ARROW_HEIGHT = 52.dp
 
 @OptIn(ExperimentalMaterial3Api::class) // TopAppBarMMD wraps M3's experimental TopAppBar
 @Composable
@@ -150,9 +147,6 @@ fun PrivacyScreen(onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
 
-    // The height of the reading area itself, not the content inside it. `verticalScroll` sizes
-    // its own node to the viewport and lets the content overflow past it, so this is measured
-    // rather than assumed — the Kompakt's usable height is not a number to hardcode (AGENTS.md).
     var viewportPx by remember { mutableIntStateOf(0) }
     val overlapPx = remember(density) { with(density) { PAGE_OVERLAP.toPx() }.roundToInt() }
     val stepPx = (viewportPx - overlapPx).coerceAtLeast(1)
@@ -160,17 +154,7 @@ fun PrivacyScreen(onDone: () -> Unit) {
     val maxScroll = scrollState.maxValue
     val atTop = scrollState.value <= 0
     val atBottom = scrollState.value >= maxScroll
-    val pageCount =
-        if (viewportPx == 0 || maxScroll <= 0) 1
-        else ceil(maxScroll.toFloat() / stepPx).toInt() + 1
-    val currentPage = when {
-        pageCount == 1 -> 1
-        atBottom -> pageCount
-        else -> (scrollState.value / stepPx) + 1
-    }
 
-    // Instant, never animated. A smooth scroll on e-ink is a stream of partial repaints, which is
-    // exactly what ghosts — the panel wants one clean jump per tap (AGENTS.md, D-007).
     fun turn(delta: Int) {
         scope.launch { scrollState.scrollTo((scrollState.value + delta).coerceIn(0, maxScroll)) }
     }
@@ -191,113 +175,124 @@ fun PrivacyScreen(onDone: () -> Unit) {
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                         )
                     },
-                    // See TripScreen: MMD's built-in rule renders ~1px, so draw the 3.dp one.
                     showDivider = false,
                 )
                 HorizontalDividerMMD()
             }
         },
-        // The pager lives in the Scaffold's bottomBar so it holds one fixed position for the whole
-        // life of the screen. Its height never changes with the content or the page number,
-        // because a control that shifts under the reader's thumb is what D-007 exists to prevent.
-        bottomBar = {
-            Column {
-                HorizontalDividerMMD()
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    PagerButton(
-                        glyph = "\u25B2",
-                        label = "Previous page",
-                        enabled = !atTop,
-                        onClick = { turn(-stepPx) },
-                    )
-                    TextMMD(text = "Page $currentPage of $pageCount", fontSize = 14.sp)
-                    PagerButton(
-                        glyph = "\u25BC",
-                        label = "Next page",
-                        enabled = !atBottom,
-                        onClick = { turn(stepPx) },
-                    )
-                }
-            }
-        },
     ) { innerPadding ->
-        // A plain scrolling Column rather than LazyColumnMMD, which is a deliberate departure from
-        // AGENTS.md's "prefer LazyColumnMMD" — see DECISIONS.md D-017. MMD's scrollbar arrows
-        // advance by whole *items*, and these items run from a one-line heading to a six-line
-        // paragraph, so the distance travelled per tap depended entirely on what happened to come
-        // next. Scrolling by a measured pixel step makes every tap identical instead. The content
-        // is a dozen static blocks, so dropping laziness costs nothing.
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp)
-                .onSizeChanged { viewportPx = it.height }
-                .verticalScroll(scrollState),
-        ) {
-            Spacer(Modifier.height(16.dp))
+        Row(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .padding(start = 16.dp, end = 12.dp)
+                    .onSizeChanged { viewportPx = it.height }
+                    .verticalScroll(scrollState),
+            ) {
+                Spacer(Modifier.height(16.dp))
 
-            PRIVACY_BLOCKS.forEach { block ->
-                when (block) {
-                    is Block.Heading -> {
-                        Spacer(Modifier.height(20.dp))
-                        TextMMD(text = block.text, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(6.dp))
-                    }
+                PRIVACY_BLOCKS.forEach { block ->
+                    when (block) {
+                        is Block.Heading -> {
+                            Spacer(Modifier.height(20.dp))
+                            TextMMD(
+                                text = block.text,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Spacer(Modifier.height(6.dp))
+                        }
 
-                    is Block.Paragraph -> {
-                        TextMMD(text = block.text, fontSize = 15.sp, lineHeight = 22.sp)
-                        Spacer(Modifier.height(10.dp))
+                        is Block.Paragraph -> {
+                            TextMMD(text = block.text, fontSize = 15.sp, lineHeight = 22.sp)
+                            Spacer(Modifier.height(10.dp))
+                        }
                     }
                 }
+
+                Spacer(Modifier.height(24.dp))
+                TextMMD(
+                    text = "TripTime ${BuildConfig.VERSION_NAME} \u00B7 Notice $NOTICE_VERSION",
+                    fontSize = 12.sp,
+                )
+                Spacer(Modifier.height(24.dp))
             }
 
-            // Two versions, because they answer different questions: which build of the app is on
-            // the phone, and whether this notice has been reworded since it was last read. They
-            // move independently — see NOTICE_VERSION. Set small rather than greyed, since the
-            // panel is monochrome and there is no grey to reach for.
-            Spacer(Modifier.height(24.dp))
-            TextMMD(
-                text = "TripTime ${BuildConfig.VERSION_NAME} \u00B7 Notice $NOTICE_VERSION",
-                fontSize = 12.sp,
+            PageScrollbar(
+                position = scrollState.value,
+                maxPosition = maxScroll,
+                viewportPx = viewportPx,
+                canGoUp = !atTop,
+                canGoDown = !atBottom,
+                onUp = { turn(-stepPx) },
+                onDown = { turn(stepPx) },
             )
-            Spacer(Modifier.height(24.dp))
         }
     }
 }
 
-/**
- * One end of the pager. Filled black while it can move, inverted to a bordered white box when it
- * cannot — the same "this control is not active right now" vocabulary the Calculate button uses
- * for its busy state (D-016), rather than the greyed-out alpha MMD reaches for by default and
- * that AGENTS.md rules out on this panel.
- */
 @Composable
-private fun PagerButton(glyph: String, label: String, enabled: Boolean, onClick: () -> Unit) {
-    ButtonMMD(
-        onClick = onClick,
-        enabled = enabled,
-        border = BorderStroke(
-            ButtonDefaultsMMD.borderWidth,
-            MaterialTheme.colorScheme.primaryContainer,
-        ),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            disabledContainerColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            disabledContentColor = MaterialTheme.colorScheme.primaryContainer,
-        ),
-        modifier = Modifier
-            .width(96.dp)
-            .height(44.dp)
-            .semantics { contentDescription = label },
+private fun PageScrollbar(
+    position: Int,
+    maxPosition: Int,
+    viewportPx: Int,
+    canGoUp: Boolean,
+    canGoDown: Boolean,
+    onUp: () -> Unit,
+    onDown: () -> Unit,
+) {
+    val density = LocalDensity.current
+    Column(
+        modifier = Modifier.fillMaxHeight().width(RAIL_WIDTH),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        TextMMD(text = glyph, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        RailArrow(glyph = "\u25B2", hollow = "\u25B3", label = "Previous page", enabled = canGoUp, onClick = onUp)
+
+        BoxWithConstraints(
+            modifier = Modifier
+                .weight(1f)
+                .width(10.dp)
+                .border(2.dp, Color.Black),
+        ) {
+            val trackPx = with(density) { maxHeight.toPx() }
+            val minThumbPx = with(density) { 24.dp.toPx() }
+            val contentPx = (viewportPx + maxPosition).toFloat()
+            val fraction = if (contentPx <= 0f) 1f else (viewportPx / contentPx).coerceIn(0f, 1f)
+            val thumbPx = (trackPx * fraction).coerceIn(minThumbPx.coerceAtMost(trackPx), trackPx)
+            val travel = trackPx - thumbPx
+            val progress = if (maxPosition <= 0) 0f else position.toFloat() / maxPosition
+            val offsetPx = (travel * progress.coerceIn(0f, 1f)).roundToInt()
+
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(0, offsetPx) }
+                    .fillMaxWidth()
+                    .height(with(density) { thumbPx.toDp() })
+                    .background(Color.Black),
+            )
+        }
+
+        RailArrow(glyph = "\u25BC", hollow = "\u25BD", label = "Next page", enabled = canGoDown, onClick = onDown)
+    }
+}
+
+@Composable
+private fun RailArrow(
+    glyph: String,
+    hollow: String,
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(RAIL_ARROW_HEIGHT)
+            .clickable(enabled = enabled, onClick = onClick)
+            .clearAndSetSemantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        TextMMD(text = if (enabled) glyph else hollow, fontSize = 16.sp, fontWeight = FontWeight.Bold)
     }
 }
