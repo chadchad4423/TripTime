@@ -47,26 +47,49 @@ PROBES = {
 
 
 def read_api_key():
+    """Environment first, so this can run on a server with no checkout of the project.
+
+    local.properties is gitignored, so a clone will not have one -- on a scheduled host, set
+    ORS_API_KEY in the environment instead (see the cron notes at the bottom of this file).
+    """
+    from_env = os.environ.get("ORS_API_KEY", "").strip()
+    if from_env:
+        return from_env
+
     path = os.path.join(ROOT, "local.properties")
-    if not os.path.exists(path):
-        sys.exit("local.properties not found -- run this from the project root.")
-    with open(path, encoding="utf-8") as handle:
-        for line in handle:
-            if line.startswith("ORS_API_KEY="):
-                key = line.split("=", 1)[1].strip()
-                if key:
-                    return key
-    sys.exit("ORS_API_KEY not found (or empty) in local.properties.")
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as handle:
+            for line in handle:
+                if line.startswith("ORS_API_KEY="):
+                    key = line.split("=", 1)[1].strip()
+                    if key:
+                        return key
+    sys.exit("No API key: set ORS_API_KEY in the environment, or run from a checkout whose "
+             "local.properties has one.")
+
+
+FALLBACK_BASE = "https://api.heigit.org"
+CONFIG_URL = "https://raw.githubusercontent.com/chadchad4423/TripTime/main/docs/config.json"
 
 
 def read_base():
-    """Follow the same config the app uses, so the poll tracks wherever it is actually pointed."""
+    """Follow the same config the app follows, so the poll tracks wherever it is actually pointed.
+
+    Local checkout first, then the published config, then the compiled-in default -- the same
+    order of preference the app itself uses, and for the same reason: every step can fail and the
+    last one cannot.
+    """
     config = os.path.join(ROOT, "docs", "config.json")
     try:
         with open(config, encoding="utf-8") as handle:
-            return json.load(handle).get("apiBase", "https://api.heigit.org").rstrip("/")
+            return json.load(handle).get("apiBase", FALLBACK_BASE).rstrip("/")
     except (OSError, ValueError):
-        return "https://api.heigit.org"
+        pass
+    try:
+        with urllib.request.urlopen(CONFIG_URL, timeout=10) as response:
+            return json.load(response).get("apiBase", FALLBACK_BASE).rstrip("/")
+    except Exception:
+        return FALLBACK_BASE
 
 
 def sample(base, api_key):
@@ -166,3 +189,37 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# ---------------------------------------------------------------------------------------------
+# Running this on a schedule (Ubuntu)
+#
+# Only Python 3 stdlib is used, so there is nothing to install beyond python3 itself.
+#
+#   mkdir -p ~/triptime ~/.config/triptime
+#   # copy poll-quota.py to ~/triptime/ (scp, or curl it from the repo)
+#
+# Put the key in a file only you can read, rather than in the crontab, so it does not appear in
+# `ps` output or in a backup of your crontab:
+#
+#   printf 'ORS_API_KEY=your-key-here\n' > ~/.config/triptime/env
+#   chmod 600 ~/.config/triptime/env
+#
+# Then `crontab -e` and add an hourly sample. Cron runs /bin/sh with almost no environment, which
+# is why the env file is sourced explicitly and python3 is given by full path:
+#
+#   0 * * * * . $HOME/.config/triptime/env && /usr/bin/python3 $HOME/triptime/poll-quota.py >> $HOME/triptime/poll.log 2>&1
+#
+# Hourly is the sensible ceiling. Each run spends one geocoding and one directions unit, so 24 of
+# each per day against budgets of 3000 and 2000 -- about 1%. Poll every minute and you would be
+# measuring yourself rather than your users, and `--summary` would say so.
+#
+# Reading it back, on the server or after copying the CSV anywhere:
+#
+#   python3 ~/triptime/poll-quota.py --show
+#   python3 ~/triptime/poll-quota.py --summary
+#
+# The CSV is append-only and the columns are stable, so it opens in anything. A gap in timestamps
+# means the host was off or the network was down -- failures are recorded as rows with an error in
+# http_status rather than being silently skipped, so an outage looks different from an idle hour.
+# ---------------------------------------------------------------------------------------------
