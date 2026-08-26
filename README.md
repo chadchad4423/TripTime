@@ -3,7 +3,7 @@
 A driving distance and estimated driving duration lookup for the [Mudita
 Kompakt](https://mudita.com/products/phones/mudita-kompakt/) — Mudita's minimalist E Ink®
 phone. Type where you're starting and where you're going; TripTime tells you how long the drive
-takes, with the distance underneath. That's it.
+takes, with the distance underneath. That's it. Yes, this app is pretty much an inside joke. :-)
 
 TripTime deliberately does **not** show a map, a route line, or turn-by-turn directions. If you
 need those, this isn't the app — it's built around the Kompakt's E Ink screen and the idea that
