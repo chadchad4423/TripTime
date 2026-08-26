@@ -1,0 +1,10 @@
+<resources>
+    <!-- The Compose UI is themed entirely through ThemeMMD (see TripTimeApp.kt). This XML
+         theme only covers the system chrome Compose doesn't touch: the window background and
+         status bar shown for the brief moment before the first frame draws, kept pure black
+         and white to match everything else in the app. -->
+    <style name="Theme.TripTime" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@android:color/white</item>
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>

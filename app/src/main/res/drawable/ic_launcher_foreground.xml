@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    TripTime's launcher icon: a gauge — a dial arc, two ticks and a needle. It reads as
+    "measuring a drive", which is the whole app: how far, and how long.
+
+    Two shapes that were tried and rejected, so they don't get tried again:
+      - A clock ring with a diagonal arrow across it. At launcher size the ring plus the
+        diagonal reads as the universal "prohibited" sign; the arrowhead and origin dot that
+        were supposed to disambiguate it are far too small to survive.
+      - A plain clock face. Legible, but sits in the app drawer directly below the stock Clock
+        app, which is also a circle with hands.
+
+    Pure black on transparent, no gradient and no second colour, matching the rest of the app —
+    and it means this same drawable serves as the Android 13+ <monochrome> themed-icon layer.
+
+    Geometry, all of which was tuned by rendering at 6x rather than by eye:
+      - The viewport is the adaptive-icon standard 108x108, but only a 66dp-diameter circle
+        centred at (54,54) survives every launcher mask, i.e. radius 33.
+      - The dial is centred on the pivot at (54,65) with radius 26. Its furthest point is the
+        left end, ~31 from (54,54) once the 6-wide stroke is counted — inside the safe radius.
+      - Ink spans y=36 to y=70, so the composition is centred on y=53 and does not sit high in
+        the mask.
+      - Ticks are at the two shoulders only. A third at twelve o'clock collided with the needle
+        and the two merged into one blob at launcher size.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Dial: the upper half of a circle centred on the needle's pivot. -->
+    <path
+        android:pathData="M28,65 A26,26 0 0,1 80,65"
+        android:strokeColor="#000000"
+        android:strokeWidth="6"
+        android:strokeLineCap="round" />
+
+    <!-- Shoulder ticks. -->
+    <path
+        android:pathData="M41,52 L38,49"
+        android:strokeColor="#000000"
+        android:strokeWidth="4"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M67,52 L70,49"
+        android:strokeColor="#000000"
+        android:strokeWidth="4"
+        android:strokeLineCap="round" />
+
+    <!-- Needle, leaning right of centre so the gauge reads as showing a value. Its tip stops 5
+         short of the dial's inner edge; at 22 units long the round cap merged into the arc. -->
+    <path
+        android:pathData="M54,65 L60,48"
+        android:strokeColor="#000000"
+        android:strokeWidth="6"
+        android:strokeLineCap="round" />
+
+    <!-- Pivot. -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M54,65 m-5,0 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0" />
+</vector>

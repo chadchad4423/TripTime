@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Required to call OpenRouteService for geocoding and driving directions. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
+        TripTime deliberately requests no location permission at all. Destination suggestions are
+        biased toward the "From" address the user has already chosen, which is both more relevant
+        than the phone's own position and free of any privacy or GPS-availability concerns. See
+        DECISIONS.md D-006.
+    -->
+
+    <application
+        android:name=".TripTimeApplication"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.TripTime">
+        <!--
+            adjustNothing: the window must never pan or resize when the keyboard appears. The
+            layout is built so every element already sits above the keyboard (see TripScreen),
+            and this makes that a guarantee rather than a coincidence. Note it does not remove
+            the keyboard's own slide-in — that is drawn by the keyboard app in its own window
+            and no app can disable another app's animation.
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.TripTime"
+            android:windowSoftInputMode="adjustNothing">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
