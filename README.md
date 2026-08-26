@@ -54,7 +54,7 @@ ghost if you fight it instead of designing for it.
 ## Building from source
 
 ```
-git clone <this repo>
+git clone https://github.com/chadchad4423/TripTime.git
 cd TripTime
 ./gradlew assembleDebug
 ```
