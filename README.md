@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="docs/logo.png" width="128"
+       alt="TripTime's icon: a gauge with a needle leaning right of centre.">
+</p>
+
 # TripTime
 
 A driving distance and estimated driving duration lookup for the [Mudita
