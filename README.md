@@ -6,12 +6,12 @@
 # TripTime
 
 A driving distance and estimated driving duration lookup for the [Mudita
-Kompakt](https://mudita.com/products/phones/mudita-kompakt/) — Mudita's minimalist E Ink®
+Kompakt](https://mudita.com/products/phones/mudita-kompakt/) — Mudita's minimalist e-ink
 phone. Type where you're starting and where you're going; TripTime tells you how long the drive
 takes, with the distance underneath. That's it.
 
 TripTime deliberately does **not** show a map, a route line, or turn-by-turn directions. If you
-need those, this isn't the app — it's built around the Kompakt's E Ink screen and the idea that
+need those, this isn't the app — it's built around the Kompakt's e-ink screen and the idea that
 a quick trip estimate shouldn't need a full navigation app...and that a full navigation app needn't
 have this trip planning capability.
 
@@ -98,7 +98,7 @@ identically to the Kompakt's built-in apps.
 ## Design
 
 Built with [Mudita Mindful Design](https://mudita.com/developers/) (MMD), Mudita's own
-Compose component library for E Ink displays: pure black-and-white, no ripple or gradient
+Compose component library for e-ink displays: pure black-and-white, no ripple or gradient
 effects, no animated loading indicators, and immediate, deliberate interaction rather than
 continuous scrolling — all in service of a screen technology that's slow to refresh and easy to
 ghost if you fight it instead of designing for it.
