@@ -69,10 +69,19 @@ class OrsClient(private val configStore: RemoteConfigStore) {
     suspend fun autocomplete(query: String, focus: Place?): List<Place> =
         geocode(path = { it.autocompletePath }, query = query, focus = focus, size = 5)
 
-    /** A single best-match lookup, used when the user types an address without picking one
-     * of the autocomplete suggestions and then presses Calculate. */
-    suspend fun search(query: String, focus: Place?): List<Place> =
-        geocode(path = { it.searchPath }, query = query, focus = focus, size = 1)
+    /**
+     * Pelias's full search, as opposed to its type-ahead. Used for two things: resolving text the
+     * user never picked from the picker (with [size] 1), and rescuing the queries autocomplete
+     * cannot handle (with [size] 5).
+     *
+     * The two endpoints are good at different things, which is why both are still here.
+     * Autocomplete is built for partial words — "Denv" finds Denver, "Bould" finds Boulder County
+     * — and search does not; it offers a hotel and an English village for those. But autocomplete
+     * returns *nothing at all* for a complete street address with a house number and a postcode,
+     * which search resolves correctly. Neither is a superset of the other.
+     */
+    suspend fun search(query: String, focus: Place?, size: Int = 1): List<Place> =
+        geocode(path = { it.searchPath }, query = query, focus = focus, size = size)
 
     /**
      * Autocomplete and search differ only in which path they use and how many results they want.
