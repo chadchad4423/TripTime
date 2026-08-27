@@ -5,5 +5,5 @@
   "searchPath": "/pelias/v1/search",
   "directionsPath": "/openrouteservice/v2/directions/driving-car",
   "latestVersion": "1.3",
-  "message": ""
+  "message": "Sorry \u2014 the address list in this version is broken. Version 1.4 fixes it and is coming shortly."
 }
