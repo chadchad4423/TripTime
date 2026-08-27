@@ -117,7 +117,7 @@ class TripViewModel(
     ) {
         viewModelScope.launch {
             query
-                .debounce(350)
+                .debounce(SUGGESTION_DEBOUNCE_MS)
                 .distinctUntilChanged()
                 .collectLatest { text ->
                     // Below three characters the suggestions are useless anyway — "D" matches
@@ -186,6 +186,18 @@ class TripViewModel(
         // suggestion list straight back open underneath the field.
     }
 
+    /**
+     * Closes both suggestion lists without touching the typed text.
+     *
+     * The list is a Popup, so it draws over everything and nothing beneath it can be tapped -- on
+     * the "To" field it covers most of the keyboard. Before this existed the only ways out were to
+     * pick a suggestion or to press back twice, and the second back left the app entirely and took
+     * the typed addresses with it, which read as "back wiped my input".
+     */
+    fun dismissSuggestions() {
+        _uiState.update { it.copy(originSuggestions = emptyList(), destinationSuggestions = emptyList()) }
+    }
+
     /** Sets the unit outright rather than flipping it: the UI offers "mi" and "km" as two
      * separate labels, so tapping the one already selected should be a no-op, not a switch. */
     fun selectUnit(unit: DistanceUnit) {
@@ -249,6 +261,17 @@ private const val CACHE_ENTRIES = 50
 
 /** Shorter queries match too much to be worth a request — see D-021. */
 private const val MIN_QUERY_LENGTH = 3
+
+/**
+ * How long typing must stop before suggestions are fetched.
+ *
+ * Was 350ms, which fired on any hesitation part-way through an address — the list would
+ * appear over the keyboard mid-word and have to be dismissed to carry on typing. 800ms is
+ * closer to an actual pause, and since it is the geocoding endpoint being called, and
+ * geocoding is the binding quota, fewer half-typed lookups is a saving as well as a
+ * kindness.
+ */
+private const val SUGGESTION_DEBOUNCE_MS = 800L
 
 /**
  * What, if anything, to show the user from remote config: an explicit broadcast message wins, and

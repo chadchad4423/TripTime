@@ -4,11 +4,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardActions
@@ -24,7 +26,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -36,6 +40,20 @@ import androidx.compose.ui.window.PopupProperties
 import com.chad.triptime.model.Place
 import com.mudita.mmd.components.text.TextMMD
 import com.mudita.mmd.components.text_field.TextFieldMMD
+import kotlin.math.floor
+
+/**
+ * Height of one suggestion row: 12.dp padding above and below a single line of bodyLarge.
+ * Measured on the Kompakt at 65px, i.e. 48.8.dp at 213dpi, and rounded. It is a constant rather
+ * than a measurement because the count of rows that fit has to be known before the first frame is
+ * drawn -- measuring a row first would show an over-long list and then snap it shorter, and a list
+ * that resizes under the reader is exactly what an e-ink layout must not do. Re-measure if the row
+ * padding or the text style ever changes.
+ */
+private val SUGGESTION_ROW_HEIGHT = 49.dp
+
+/** Breathing room between the last suggestion and the top of the keyboard. */
+private val KEYBOARD_CLEARANCE = 8.dp
 
 /**
  * A labeled address field with an OpenRouteService autocomplete dropdown underneath it. Used
@@ -59,6 +77,12 @@ fun PlaceField(
     onValueChange: (String) -> Unit,
     onSuggestionPicked: (Place) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Top of the screen's content area in window coordinates, below the app bar. The list may grow
+     * upward into the space above the field, but not past this -- otherwise it rides over the
+     * header and the status bar, which looks like the app has come apart.
+     */
+    contentTopPx: Int = 0,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
 ) {
@@ -69,6 +93,10 @@ fun PlaceField(
     // focused once the space it occupies is fixed and nothing below it can shift again.
     // Measured rather than hard-coded so it still holds if the system font scale changes.
     var slotHeightPx by remember { mutableIntStateOf(0) }
+    // Where the field sits in the window, and how tall the window is, so the suggestion list can
+    // be limited to the space that actually exists between the field and the keyboard.
+    var fieldTopInWindow by remember { mutableIntStateOf(0) }
+    var rootHeightPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
 
     Column(modifier = modifier.fillMaxWidth()) {
@@ -96,14 +124,49 @@ fun PlaceField(
                     .onGloballyPositioned {
                         fieldSize = it.size
                         if (it.size.height > slotHeightPx) slotHeightPx = it.size.height
+                        fieldTopInWindow = it.positionInWindow().y.toInt()
+                        rootHeightPx = it.findRootCoordinates().size.height
                     },
             )
 
-            if (suggestions.isNotEmpty() && fieldSize != IntSize.Zero) {
+            // How many suggestions fit between the bottom of this field and the top of the
+            // keyboard. The list is a Popup, so nothing stops it drawing straight over the
+            // keyboard -- and it did: on the "To" field it buried three rows of keys, and on
+            // "From" it covered the QWERTY row, so the user could not see what they were typing
+            // on. Whole rows only: a row sliced through its own text reads as damage, which is
+            // the same reason the rows are single-line in the first place.
+            val imeHeightPx = WindowInsets.ime.getBottom(density)
+            val clearancePx = with(density) { KEYBOARD_CLEARANCE.toPx() }
+            val rowPx = with(density) { SUGGESTION_ROW_HEIGHT.toPx() }
+            val belowPx = rootHeightPx - imeHeightPx - (fieldTopInWindow + slotHeightPx) - clearancePx
+            // Space above the field, which on the "To" field is occupied by the already-filled
+            // "From" field -- worth covering, since the user has finished with it, and better than
+            // the single row that fits below it once the keyboard is up. No clearance subtracted
+            // here: KEYBOARD_CLEARANCE exists to keep the list off the keyboard, and the keyboard
+            // is only ever below. Subtracting it up here cost a whole row -- measured on the
+            // device, the second row missed by 0.13 of a pixel.
+            val abovePx = (fieldTopInWindow - contentTopPx).toFloat()
+            val rowsBelow = floor(belowPx / rowPx).toInt()
+            val rowsAbove = floor(abovePx / rowPx).toInt()
+            // Below unless above genuinely fits more, so the list stays in the expected place
+            // whenever it can. Before the first measurement, and whenever the keyboard is down,
+            // there is nothing to avoid: show everything.
+            val unmeasured = rootHeightPx == 0 || imeHeightPx == 0
+            val flipAbove = !unmeasured && rowsAbove > rowsBelow
+            val roomForRows = when {
+                unmeasured -> suggestions.size
+                flipAbove -> rowsAbove
+                else -> rowsBelow
+            }
+            val visible = suggestions.take(roomForRows.coerceAtLeast(1))
+            val listHeightPx = (visible.size * rowPx).toInt()
+
+            if (visible.isNotEmpty() && fieldSize != IntSize.Zero) {
                 Popup(
-                    // Aligned to the field's top-left, then pushed straight down by the slot
-                    // height so the list hangs directly beneath it, and stays put on focus change.
-                    offset = IntOffset(0, slotHeightPx),
+                    // Aligned to the field's top-left, then pushed down by the slot height so the
+                    // list hangs directly beneath it and stays put on focus change -- or lifted by
+                    // its own height so it sits directly above, when that is where the room is.
+                    offset = IntOffset(0, if (flipAbove) -listHeightPx else slotHeightPx),
                     // Not focusable: the keyboard must stay up and keep receiving keystrokes while
                     // the list is showing, since the list updates as the user keeps typing.
                     properties = PopupProperties(focusable = false),
@@ -117,7 +180,7 @@ fun PlaceField(
                             .background(Color.White)
                             .border(width = 1.dp, color = Color.Black),
                     ) {
-                        suggestions.forEachIndexed { index, place ->
+                        visible.forEachIndexed { index, place ->
                             Text(
                                 text = place.label,
                                 style = MaterialTheme.typography.bodyLarge,
@@ -137,7 +200,7 @@ fun PlaceField(
                                     .clickable { onSuggestionPicked(place) }
                                     .padding(12.dp),
                             )
-                            if (index != suggestions.lastIndex) {
+                            if (index != visible.lastIndex) {
                                 HorizontalDivider(color = Color.Black, thickness = 1.dp)
                             }
                         }
