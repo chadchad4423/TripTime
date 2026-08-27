@@ -1,6 +1,5 @@
 package com.chad.triptime.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,11 +8,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardActions
@@ -25,17 +22,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -77,29 +69,6 @@ fun TripScreen(viewModel: TripViewModel, onOpenPrivacy: () -> Unit) {
     // Calculate button, and the second back left the app -- which looked like back had erased the
     // addresses. Hiding the keyboard at the same time is deliberate: one press should clear
     // everything covering the layout, not two.
-    // Where the content area begins, so a suggestion list that grows upward stops at the
-    // header rather than riding over it and the status bar.
-    var contentTopPx by remember { mutableIntStateOf(0) }
-
-    val suggestionsShowing = state.originSuggestions.isNotEmpty() ||
-        state.destinationSuggestions.isNotEmpty()
-
-    // The list belongs to typing, so it goes when the keyboard goes. Without this it outlived the
-    // keyboard and sat over the Calculate button, and since the first back press is swallowed by
-    // the IME it took a second press to clear -- which, before the list could be dismissed at all,
-    // was the press that left the app and appeared to wipe the typed addresses.
-    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-    LaunchedEffect(imeVisible) {
-        if (!imeVisible) viewModel.dismissSuggestions()
-    }
-
-    // Kept as well, for the case where back reaches the app rather than the keyboard: dismissing
-    // the list should never be the same gesture as leaving the app.
-    BackHandler(enabled = suggestionsShowing) {
-        keyboard?.hide()
-        viewModel.dismissSuggestions()
-    }
-
     Scaffold(
         containerColor = Color.White,
         topBar = {
@@ -136,20 +105,21 @@ fun TripScreen(viewModel: TripViewModel, onOpenPrivacy: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp)
-                .onGloballyPositioned { contentTopPx = it.positionInWindow().y.toInt() },
+                .padding(horizontal = 16.dp),
         ) {
             // These three spacers were trimmed (8/12/8 dp -> 4/8/6 dp) to pay for the taller
             // Calculate button below without moving its bottom edge down into the keyboard.
             Spacer(Modifier.height(4.dp))
 
+            // The keyboard's action key opens the address picker rather than a dropdown over
+            // this screen (D-022). Calculate still works on freely typed text, so the picker is
+            // an offer rather than a step you must take.
             PlaceField(
                 label = "From",
                 value = state.originQuery,
-                suggestions = state.originSuggestions,
                 onValueChange = { viewModel.onQueryChange(TripField.ORIGIN, it) },
-                onSuggestionPicked = { viewModel.onSuggestionPicked(TripField.ORIGIN, it) },
-                contentTopPx = contentTopPx,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { viewModel.openPicker(TripField.ORIGIN) }),
             )
 
             Spacer(Modifier.height(8.dp))
@@ -157,14 +127,9 @@ fun TripScreen(viewModel: TripViewModel, onOpenPrivacy: () -> Unit) {
             PlaceField(
                 label = "To",
                 value = state.destinationQuery,
-                suggestions = state.destinationSuggestions,
                 onValueChange = { viewModel.onQueryChange(TripField.DESTINATION, it) },
-                onSuggestionPicked = { viewModel.onSuggestionPicked(TripField.DESTINATION, it) },
-                contentTopPx = contentTopPx,
-                // The destination is the last thing typed, so the keyboard's action key is "Go"
-                // and runs the same calculation as the button.
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                keyboardActions = KeyboardActions(onGo = { calculate() }),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { viewModel.openPicker(TripField.DESTINATION) }),
             )
 
             Spacer(Modifier.height(6.dp))

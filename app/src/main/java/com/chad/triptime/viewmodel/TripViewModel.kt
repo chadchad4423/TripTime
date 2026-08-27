@@ -21,7 +21,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -34,8 +33,11 @@ private const val TAG = "TripViewModel"
 data class TripUiState(
     val originQuery: String = "",
     val destinationQuery: String = "",
-    val originSuggestions: List<Place> = emptyList(),
-    val destinationSuggestions: List<Place> = emptyList(),
+    /**
+     * The address picker, when it is open. Suggestions are no longer an overlay on the trip
+     * screen — see DECISIONS.md D-022. Null means the picker is closed.
+     */
+    val picker: PickerState? = null,
     val originSelected: Place? = null,
     val destinationSelected: Place? = null,
     val unit: DistanceUnit = DistanceUnit.IMPERIAL,
@@ -48,6 +50,21 @@ data class TripUiState(
 
     /** Chosen once per calculated trip, never re-rolled during recomposition. */
     val sillyUnit: SillyUnit? = null,
+)
+
+/**
+ * The address picker: which field asked for it, what was searched, and what came back.
+ *
+ * A screen of its own rather than a dropdown over the trip screen. The dropdown had to be sized
+ * against the keyboard it was covering, and no arrangement of it left room for more than a couple
+ * of results on the lower field — see D-022.
+ */
+data class PickerState(
+    val field: TripField,
+    val query: String,
+    val isLoading: Boolean = false,
+    val results: List<Place> = emptyList(),
+    val errorMessage: String? = null,
 )
 
 /**
@@ -95,62 +112,11 @@ class TripViewModel(
             _uiState.update { it.copy(notice = notice) }
         }
 
-        observeQuery(originQuery, focus = { null }) { suggestions ->
-            _uiState.update { it.copy(originSuggestions = suggestions) }
-        }
-        // Destination suggestions are biased toward wherever the trip starts, so a vague
-        // destination ("main st") offers streets near the origin instead of the most globally
-        // prominent match. Read lazily rather than captured, because the origin can change
-        // after this collector is set up.
-        observeQuery(destinationQuery, focus = { _uiState.value.originSelected }) { suggestions ->
-            _uiState.update { it.copy(destinationSuggestions = suggestions) }
-        }
     }
 
     /** Debounces typing, drops the request entirely once the field is empty, and always keeps
      * only the latest in-flight lookup. */
     @OptIn(FlowPreview::class)
-    private fun observeQuery(
-        query: MutableStateFlow<String>,
-        focus: () -> Place?,
-        onResult: (List<Place>) -> Unit,
-    ) {
-        viewModelScope.launch {
-            query
-                .debounce(SUGGESTION_DEBOUNCE_MS)
-                .distinctUntilChanged()
-                .collectLatest { text ->
-                    // Below three characters the suggestions are useless anyway — "D" matches
-                    // most of the planet — and every keystroke that fires is quota spent from a
-                    // key shared by every install. Skipping them is the single largest saving
-                    // available without touching what the user sees (D-021).
-                    if (text.trim().length < MIN_QUERY_LENGTH) {
-                        onResult(emptyList())
-                        return@collectLatest
-                    }
-                    // Autocomplete failures stay silent in the UI on purpose — nagging on every
-                    // keystroke would be worse than simply showing no suggestions, and Calculate
-                    // still reports its own errors properly. Logging keeps them debuggable.
-                    val focusPoint = focus()
-                    val cacheKey = "${focusPoint?.latitude},${focusPoint?.longitude}|$text"
-                    val cached = suggestionCache.get(cacheKey)
-                    if (cached != null) {
-                        onResult(cached)
-                        return@collectLatest
-                    }
-
-                    val results = runCatching { repository.suggestions(text, focusPoint) }
-                        .onFailure { Log.w(TAG, "Autocomplete failed for \"$text\"", it) }
-                        .getOrDefault(emptyList())
-                    // Only successful lookups are cached: an empty list may mean "no matches" or
-                    // "the request failed", and caching the second would make a transient outage
-                    // look permanent for the rest of the session.
-                    if (results.isNotEmpty()) suggestionCache.put(cacheKey, results)
-                    onResult(results)
-                }
-        }
-    }
-
     fun onQueryChange(field: TripField, text: String) {
         _uiState.update { state ->
             when (field) {
@@ -164,38 +130,79 @@ class TripViewModel(
         }
     }
 
+    /** Chosen from the picker: fill the field, remember the coordinates, and close the picker. */
     fun onSuggestionPicked(field: TripField, place: Place) {
         _uiState.update { state ->
             when (field) {
                 TripField.ORIGIN -> state.copy(
                     originQuery = place.label,
                     originSelected = place,
-                    originSuggestions = emptyList(),
+                    picker = null,
                     tripResult = null,
                 )
                 TripField.DESTINATION -> state.copy(
                     destinationQuery = place.label,
                     destinationSelected = place,
-                    destinationSuggestions = emptyList(),
+                    picker = null,
                     tripResult = null,
                 )
             }
         }
-        // Deliberately does *not* push the chosen label into the debounced query flow: doing so
-        // would fire a fresh lookup for the very text the user just resolved and pop the
-        // suggestion list straight back open underneath the field.
+        // No lookup is fired for the label just chosen. Nothing would re-open now that the
+        // picker is a screen, but it would still spend a geocoding request to re-resolve an
+        // address whose coordinates are already in hand.
     }
 
     /**
-     * Closes both suggestion lists without touching the typed text.
+     * Opens the address picker for [field] and starts a search for whatever has been typed there.
      *
-     * The list is a Popup, so it draws over everything and nothing beneath it can be tapped -- on
-     * the "To" field it covers most of the keyboard. Before this existed the only ways out were to
-     * pick a suggestion or to press back twice, and the second back left the app entirely and took
-     * the typed addresses with it, which read as "back wiped my input".
+     * Explicit rather than automatic: nothing is looked up until the user asks, so the results
+     * never arrive mid-word (D-022). The old debounce existed only to guess when typing had
+     * stopped, and guessing is what made the list appear at the wrong moment.
      */
-    fun dismissSuggestions() {
-        _uiState.update { it.copy(originSuggestions = emptyList(), destinationSuggestions = emptyList()) }
+    fun openPicker(field: TripField) {
+        val query = when (field) {
+            TripField.ORIGIN -> _uiState.value.originQuery
+            TripField.DESTINATION -> _uiState.value.destinationQuery
+        }.trim()
+        if (query.length < MIN_QUERY_LENGTH) return
+
+        _uiState.update { it.copy(picker = PickerState(field = field, query = query, isLoading = true)) }
+
+        viewModelScope.launch {
+            // Destination results are biased toward wherever the trip starts, so a vague
+            // destination ("main st") offers streets near the origin rather than the most globally
+            // prominent match. TripTime never reads the phone's location for this (D-006).
+            val focus = if (field == TripField.DESTINATION) _uiState.value.originSelected else null
+            val cacheKey = "${focus?.latitude},${focus?.longitude}|$query"
+            val cached = suggestionCache.get(cacheKey)
+            val results = cached ?: runCatching { repository.suggestions(query, focus) }
+                .onFailure { Log.w(TAG, "Search failed for \"$query\"", it) }
+                .getOrNull()
+
+            _uiState.update { state ->
+                // The user may have backed out while the request was in flight; do not reopen it.
+                val open = state.picker ?: return@update state
+                if (open.field != field || open.query != query) return@update state
+                when {
+                    results == null -> state.copy(
+                        picker = open.copy(
+                            isLoading = false,
+                            errorMessage = "Couldn't reach the address service. Check the connection and try again.",
+                        )
+                    )
+                    else -> {
+                        if (results.isNotEmpty()) suggestionCache.put(cacheKey, results)
+                        state.copy(picker = open.copy(isLoading = false, results = results))
+                    }
+                }
+            }
+        }
+    }
+
+    /** Leaves the picker without choosing, keeping whatever was typed. */
+    fun closePicker() {
+        _uiState.update { it.copy(picker = null) }
     }
 
     /** Sets the unit outright rather than flipping it: the UI offers "mi" and "km" as two
@@ -222,8 +229,6 @@ class TripViewModel(
                     isLoading = true,
                     errorMessage = null,
                     tripResult = null,
-                    originSuggestions = emptyList(),
-                    destinationSuggestions = emptyList(),
                 )
             }
             try {
@@ -259,19 +264,10 @@ class TripViewModel(
  * very long session cannot grow memory without limit. */
 private const val CACHE_ENTRIES = 50
 
-/** Shorter queries match too much to be worth a request — see D-021. */
+/** Below this the picker will not search: shorter queries match too much to be useful, and
+ * it is the geocoding quota being spent (D-021). */
 private const val MIN_QUERY_LENGTH = 3
 
-/**
- * How long typing must stop before suggestions are fetched.
- *
- * Was 350ms, which fired on any hesitation part-way through an address — the list would
- * appear over the keyboard mid-word and have to be dismissed to carry on typing. 800ms is
- * closer to an actual pause, and since it is the geocoding endpoint being called, and
- * geocoding is the binding quota, fewer half-typed lookups is a saving as well as a
- * kindness.
- */
-private const val SUGGESTION_DEBOUNCE_MS = 800L
 
 /**
  * What, if anything, to show the user from remote config: an explicit broadcast message wins, and
